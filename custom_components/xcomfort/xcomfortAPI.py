@@ -50,6 +50,8 @@ class xcomfortAPI:
                     _LOGGER.debug('xcomfortAPI.connect() New sessionID = %s', self.sessionID)
             async with aiofiles.open("xcomfort_session", "w") as file:
                 await file.write(self.sessionID)
+        self.zones = await self.get_zones()
+        _LOGGER.info(f"Opgehaalde zones: {self.zones}")
 
     async def query(self, method, params=['', '']):
         #_LOGGER.debug("query(%s)",method)
