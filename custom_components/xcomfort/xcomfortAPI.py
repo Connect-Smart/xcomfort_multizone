@@ -101,26 +101,24 @@ class xcomfortAPI:
         _LOGGER.debug("add_heating_zone zone=%s",zone)
 
     async def get_statuses(self):
-        _LOGGER.debug("get_statuses() counter=%d, stat_interval=%d",self.update_counter,self.stat_interval)
-        self.devices = await self.query('StatusControlFunction/getDevices', params=[self.zone, ''])
-        self.scenes = await self.query('SceneFunction/getScenes', params=[self.zone, ''])
-        #_LOGGER.debug("get_statuses() self.devices=%s", self.devices)
-        #_LOGGER.debug("get_statuses() self.scenes=%s", self.scenes)
-        if (self.update_counter <= 0) or self.stat_scan_now:
-            _LOGGER.debug("get_statuses() update_counter <= 0")
-            self.update_counter = self.stat_interval
-            self.stat_scan_now = False
-            self.log_stats = await self.query('Diagnostics/getPhysicalDevicesWithLogStats')
-            for zone in self.heating_zones:
-                #_LOGGER.debug("get_statuses() zone=%s", zone)
-                results = await self.query('ClimateFunction/getZoneOverview',[zone])
-                _target_temp = float(results[0]['overview'][0]['setpoint'])
-                _heating = results[0]['overview'][0]['typeId']
-                x = { zone:{'heating':_heating,"setpoint":_target_temp}}
-                #_LOGGER.debug("get_statuses() x=%s", x)
-                self.heating_status.update(x)
-        self.update_counter -=1
+        _LOGGER.debug("get_statuses() counter=%d, stat_interval=%d", self.update_counter, self.stat_interval)
+        for zone in self.zones:
+            self.devices[zone] = await self.query('StatusControlFunction/getDevices', params=[zone, ''])
+            self.scenes[zone] = await self.query('SceneFunction/getScenes', params=[zone, ''])
+            if (self.update_counter <= 0) or self.stat_scan_now:
+                self.update_counter = self.stat_interval
+                self.stat_scan_now = False
+                results = await self.query('ClimateFunction/getZoneOverview', [zone])
+                for result in results[0]['overview']:
+                    device_id = result['deviceId']
+                    setpoint = float(result['setpoint'])
+                    heating = result['typeId']
+                    self.heating_status[zone] = {
+                        device_id: {'heating': heating, "setpoint": setpoint}
+                    }
+        self.update_counter -= 1
         return True
+
 
     async def get_zones(self):
         _LOGGER.debug("get_zones()")
@@ -141,17 +139,18 @@ class xcomfortAPI:
         else:
             return True
 
-    async def set_temperture(self, zone_id, temp):
-        _LOGGER.debug("set_temperture %s %s ",zone_id,str(temp))
-        result = await self.query('ClimateFunction/setSetpoint', [zone_id, str(temp)])
-        if not result['status'] == 'ok':
-            _LOGGER.debug("set_temperture %s UNsuccess",zone_id)
+    async def set_temperature(self, zone, device_id, temp):
+        _LOGGER.debug("set_temperature zone=%s device=%s temp=%s", zone, device_id, temp)
+        result = await self.query('ClimateFunction/setSetpoint', [zone, device_id, str(temp)])
+        if result.get('status') != 'ok':
+            _LOGGER.error("set_temperature UNSUCCESSFUL for %s", device_id)
             return False
         else:
-            _LOGGER.debug("set_temperture %s success",zone_id)
-            self.heating_status[zone_id]['setpoint']=temp
+            _LOGGER.debug("set_temperature SUCCESS for %s", device_id)
+            self.heating_status[zone][device_id]['setpoint'] = temp
             self.stat_scan_now = True
             return True
+
 
     async def set_heatingmode(self, zone_id, mode):
         if mode:
